@@ -1,40 +1,34 @@
-name: Daily Majles Grabber
+name: Daily Majles Article Grabber
 
 on:
+  workflow_dispatch:
   schedule:
-    # اجرا هر روز ساعت ۰۴:۰۰ UTC (حدود ساعت ۰۷:۳۰ صبح به‌وقت تهران)
-    - cron: '0 4 * * *'
-  workflow_dispatch: # دکمه اجرای دستی از داخل صفحه Actions گیت‌هاب
+    - cron: '30 4 * * *' # هر روز ساعت ۷:۳۰ صبح به وقت تهران
 
 jobs:
   run-grabber:
     runs-on: ubuntu-latest
-
     permissions:
-      contents: write # مجوز کامیت کردن فایل تاریخچه
-
+      contents: write
     steps:
-      - name: دریافت کدهای مخزن
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: نصب پایتون
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: نصب پیش‌نیازها
+      - name: Install dependencies
         run: |
           pip install requests beautifulsoup4 lxml
 
-      - name: اجرای برنامه پایش و کپی مقالات
-        env:
-          GDRIVE_WEBAPP_URL: "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
-        run: |
-          python grabber.py
+      - name: Run grabber script
+        run: python grabber.py
 
-      - name: ذخیره و کامیت تاریخچه مقالات دانلود شده
+      - name: Commit and push changes if any
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add downloaded_articles.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update downloaded articles [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update articles json" && git push)
