@@ -9,14 +9,16 @@ TARGET_URL = "https://nashr.majles.ir/"
 GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
 DATA_FILE = "downloaded_articles.json"
 
-# لیست عباراتی که نباید به عنوان نام مقاله انتخاب شوند
-IGNORE_TITLES = [
+IGNORE_WORDS = [
+    "شماره‌های پیشین نشریه",
     "مقالات آماده انتشار",
+    "شماره جاری",
     "مقاله پژوهشی",
     "مقاله ترویجی",
     "مقاله مروری",
     "مشاهده مقاله",
     "اصل مقاله",
+    "فایل کلی",
     "دانلود",
     "doi"
 ]
@@ -50,12 +52,21 @@ def upload_to_drive(filename, file_bytes, mime_type="application/pdf"):
         print(f"Drive upload failed: {e}")
         return False
 
-def is_valid_title(text):
-    if not text or len(text.strip()) < 10:
+def clean_text(text):
+    if not text:
+        return ""
+    return re.sub(r'\s+', ' ', text).strip()
+
+def is_title_candidate(text):
+    t = clean_text(text)
+    if len(t) < 15:
         return False
-    t_clean = text.strip()
-    for ignore in IGNORE_TITLES:
-        if t_clean == ignore or t_clean.startswith(ignore):
+    if re.search(r'^\d+\.\d{4,9}/', t): # DOI است
+        return False
+    if re.search(r'^صفحه\s+\d+', t): # شماره صفحه است
+        return False
+    for ign in IGNORE_WORDS:
+        if t.startswith(ign) or ign in t:
             return False
     return True
 
@@ -72,83 +83,41 @@ def main():
     saved_articles = load_saved_articles()
     saved_ids = {a.get("id") if isinstance(a, dict) else a for a in saved_articles}
 
-    article_nodes = soup.find_all("li", class_="margin-bottom-15") or soup.find_all("div", class_="article-item")
-    if not article_nodes:
-        article_nodes = soup.find_all("div")
-
+    # یافتن تمامی لینک‌های DOI موجود در صفحه
+    doi_links = soup.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))
     new_articles_count = 0
 
-    for node in article_nodes:
-        doi_tag = node.find("a", href=re.compile(r"doi\.org/10\.", re.I))
-        if not doi_tag:
-            continue
-
+    for doi_tag in doi_links:
         doi_url = doi_tag["href"].strip()
-        doi_id = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
-        article_id = doi_id.group(0) if doi_id else doi_url
+        doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
+        article_id = doi_match.group(0) if doi_match else doi_url
 
         if article_id in saved_ids:
             continue
 
-        # استخراج دقیق عنوان مقاله با فیلتر کردن عناوین غیرمرتبط
+        # پیدا کردن کانتینر یا بلوک مربوط به این مقاله
+        parent = doi_tag.parent
+        # چند پله بالا می‌رویم تا کل بلوک مقاله را در بر بگیرد
+        container = None
+        for _ in range(4):
+            if parent and (parent.name in ['li', 'div', 'tr']):
+                # بررسی اینکه آیا بیشتر از یک لینک DOI در این بلوک هست یا خیر
+                if len(parent.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))) == 1:
+                    container = parent
+            if parent:
+                parent = parent.parent
+
+        if not container:
+            container = doi_tag.parent
+
+        # استخراج عنوان: جستجوی متون داخل بلوک این مقاله
         title = ""
         
-        # ۱. اولویت اول: لینک‌های داخلی که به صفحه خود مقاله اشاره دارند (معمولا شامل /article_)
-        article_link = node.find("a", href=re.compile(r"/article_\d+", re.I))
-        if article_link and is_valid_title(article_link.get_text()):
-            title = article_link.get_text(strip=True)
+        # بررسی تگ‌های تیتردار داخل کانتینر
+        for tag in container.find_all(['h5', 'h4', 'h3', 'strong', 'p', 'a', 'span']):
+            txt = tag.get_text()
+            if is_title_candidate(txt):
+                title = clean_text(txt)
+                break
 
-        # ۲. اولویت دوم: بررسی تگ‌های عنوان
-        if not title:
-            for tag_name in ["h5", "h4", "h3", "strong"]:
-                t_tag = node.find(tag_name)
-                if t_tag and is_valid_title(t_tag.get_text()):
-                    title = t_tag.get_text(strip=True)
-                    break
-
-        # ۳. اولویت سوم: هر لینکی که شرط عنوان واقعی را داشته باشد
-        if not title:
-            for l in node.find_all("a"):
-                txt = l.get_text(strip=True)
-                if is_valid_title(txt) and "doi.org" not in l.get("href", "") and ".pdf" not in l.get("href", ""):
-                    title = txt
-                    break
-
-        if not title:
-            title = "مقاله نشریه مجلس"
-
-        # استخراج لینک دانلود مستقیم PDF
-        pdf_url = ""
-        pdf_tag = node.find("a", href=re.compile(r"\.pdf|/article_\d+_.*\.html|/pdf_", re.I))
-        if pdf_tag:
-            pdf_url = pdf_tag["href"].strip()
-            if not pdf_url.startswith("http"):
-                pdf_url = requests.compat.urljoin(TARGET_URL, pdf_url)
-
-        print(f"Found new article: {title}")
-
-        if pdf_url:
-            try:
-                pdf_resp = requests.get(pdf_url, headers=headers, timeout=40)
-                if pdf_resp.status_code == 200:
-                    clean_title = re.sub(r'[\\/*?:"<>|]', "", title)[:60]
-                    safe_filename = f"{clean_title}.pdf"
-                    upload_to_drive(safe_filename, pdf_resp.content, "application/pdf")
-            except Exception as e:
-                print(f"PDF download/upload warning: {e}")
-
-        article_entry = {
-            "id": article_id,
-            "title": title,
-            "doi_url": doi_url,
-            "pdf_url": pdf_url or doi_url
-        }
-        saved_articles.append(article_entry)
-        saved_ids.add(article_id)
-        new_articles_count += 1
-
-    save_articles(saved_articles)
-    print(f"Finished. {new_articles_count} new articles recorded.")
-
-if __name__ == "__main__":
-    main()
+        # اگر هنوز عنوان 
