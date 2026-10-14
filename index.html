@@ -9,12 +9,13 @@
         :root {
             --primary: #1e3a8a;
             --primary-light: #2563eb;
-            --bg: #f1f5f9;
+            --bg: #f8fafc;
             --card-bg: #ffffff;
             --text-main: #0f172a;
             --text-sub: #64748b;
             --border: #e2e8f0;
-            --success: #059669;
+            --success: #16a34a;
+            --success-hover: #15803d;
         }
         * {
             box-sizing: border-box;
@@ -66,7 +67,7 @@
         }
         .toolbar input {
             flex: 1;
-            min-width: 200px;
+            min-width: 220px;
             border: 1px solid var(--border);
             padding: 0.75rem 1rem;
             border-radius: 8px;
@@ -83,19 +84,6 @@
             border-radius: 8px;
             font-weight: 700;
             font-size: 0.9rem;
-            white-space: nowrap;
-        }
-        .btn-drive-folder {
-            background: var(--success);
-            color: white;
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
         }
         .articles-list {
             display: grid;
@@ -110,63 +98,79 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 1rem;
+            gap: 1.25rem;
             flex-wrap: wrap;
         }
         .article-info {
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            align-items: flex-start;
+            gap: 0.85rem;
+            flex: 1;
+            min-width: 250px;
         }
         .article-num {
-            background: #f8fafc;
-            border: 1px solid var(--border);
-            color: var(--text-sub);
-            width: 32px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: var(--primary);
+            min-width: 32px;
             height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
+            border-radius: 8px;
             font-size: 0.85rem;
             font-weight: bold;
+            margin-top: 2px;
+        }
+        .article-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
         }
         .article-title {
             font-size: 1.05rem;
             font-weight: 700;
+            line-height: 1.6;
+            color: #1e293b;
+        }
+        .article-doi {
+            font-size: 0.8rem;
+            color: var(--text-sub);
             direction: ltr;
             text-align: right;
-            color: #1e293b;
+            font-family: monospace;
         }
         .article-actions {
             display: flex;
-            gap: 0.5rem;
+            gap: 0.6rem;
+            align-items: center;
         }
         .btn {
             display: inline-flex;
             align-items: center;
             gap: 0.4rem;
-            padding: 0.5rem 0.9rem;
-            border-radius: 6px;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
             text-decoration: none;
             font-size: 0.85rem;
-            font-weight: 600;
+            font-weight: 700;
             transition: all 0.2s;
+            white-space: nowrap;
         }
-        .btn-doi {
-            background-color: #f59e0b;
+        .btn-download {
+            background-color: var(--success);
             color: white;
         }
+        .btn-download:hover {
+            background-color: var(--success-hover);
+        }
+        .btn-doi {
+            background-color: #f1f5f9;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+        }
         .btn-doi:hover {
-            background-color: #d97706;
-        }
-        .btn-majles {
-            background-color: #eff6ff;
-            color: var(--primary);
-            border: 1px solid #bfdbfe;
-        }
-        .btn-majles:hover {
-            background-color: #dbeafe;
+            background-color: #e2e8f0;
         }
         .empty-state {
             text-align: center;
@@ -190,16 +194,13 @@
 
     <header>
         <h1>پورتال خودکار مقالات نشریه مجلس</h1>
-        <p>آرشیو مقالات دانلودشده nashr.majles.ir در فضای ذخیره‌سازی ابری</p>
+        <p>آرشیو مقالات nashr.majles.ir به همراه دانلود مستقیم و اتصال ابری</p>
     </header>
 
     <div class="container">
         <div class="toolbar">
-            <input type="text" id="searchInput" placeholder="جستجوی شناسه یا عنوان..." oninput="filterArticles()">
+            <input type="text" id="searchInput" placeholder="جستجوی عنوان مقاله یا شناسه..." oninput="filterArticles()">
             <div class="badge" id="statsCount">تعداد مقالات: ۰</div>
-            <a href="https://drive.google.com/drive/search?q=%D9%85%D8%AC%D9%84%D8%B3%20%D8%B1%D8%A7%D9%87%D8%A8%D8%B1%D8%AF" target="_blank" class="btn-drive-folder">
-                📁 مشاهده کل فایل‌ها در Google Drive
-            </a>
         </div>
 
         <div id="articlesContainer" class="articles-list">
@@ -208,7 +209,7 @@
     </div>
 
     <footer>
-        همگام‌سازی خودکار با GitHub Actions و ذخیره در Google Drive
+        به‌روزرسانی خودکار روزانه با GitHub Actions
     </footer>
 
     <script>
@@ -239,29 +240,40 @@
             }
 
             container.innerHTML = list.map((item, index) => {
-                const raw = typeof item === 'string' ? item : (item.id || item.title || '');
-                
-                // ایجاد لینک DOI مستقیم
-                let doiUrl = raw;
-                if (!raw.startsWith('http')) {
-                    doiUrl = 'https://doi.org/' + raw;
-                }
+                let title = "";
+                let doi = "";
+                let downloadUrl = "";
+                let doiUrl = "";
 
-                // جستجوی مستقیم فایل این مقاله در درایو
-                const driveSearchUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(raw)}`;
+                if (typeof item === 'string') {
+                    // سازگاری با داده‌های ساختار قبلی
+                    doi = item;
+                    title = "مقاله نشریه مجلس (" + item + ")";
+                    doiUrl = item.startsWith('http') ? item : 'https://doi.org/' + item;
+                    downloadUrl = doiUrl;
+                } else {
+                    // ساختار جدید و کامل
+                    title = item.title || "عنوان مقاله یافت نشد";
+                    doi = item.id || "";
+                    doiUrl = item.doi_url || ('https://doi.org/' + item.id);
+                    downloadUrl = item.pdf_url || doiUrl;
+                }
 
                 return `
                     <div class="article-card">
                         <div class="article-info">
                             <span class="article-num">${index + 1}</span>
-                            <div class="article-title">${raw}</div>
+                            <div class="article-details">
+                                <div class="article-title">${title}</div>
+                                <div class="article-doi">DOI: ${doi}</div>
+                            </div>
                         </div>
                         <div class="article-actions">
-                            <a href="${doiUrl}" target="_blank" class="btn btn-doi">
-                                🔗 باز کردن پیوند DOI
+                            <a href="${downloadUrl}" target="_blank" download class="btn btn-download">
+                                📥 دانلود مستقیم فایل
                             </a>
-                            <a href="${driveSearchUrl}" target="_blank" class="btn btn-majles">
-                                📥 دانلود از درایو
+                            <a href="${doiUrl}" target="_blank" class="btn btn-doi">
+                                🔗 صفحه DOI
                             </a>
                         </div>
                     </div>
@@ -272,8 +284,8 @@
         function filterArticles() {
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allArticles.filter(item => {
-                const str = typeof item === 'string' ? item : JSON.stringify(item);
-                return str.toLowerCase().includes(query);
+                const title = typeof item === 'string' ? item : (item.title + " " + item.id);
+                return title.toLowerCase().includes(query);
             });
             renderArticles(filtered);
         }
