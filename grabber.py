@@ -6,11 +6,12 @@ import requests
 from bs4 import BeautifulSoup
 
 TARGET_URL = "https://nashr.majles.ir/"
+# همان وب‌اپلیکیشن گوگل اپس اسکریپت شما
 GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
 DATA_FILE = "downloaded_articles.json"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
 IGNORE_WORDS = [
@@ -19,173 +20,107 @@ IGNORE_WORDS = [
     "اصل مقاله", "فایل کلی", "دانلود", "doi"
 ]
 
-def load_saved_articles():
+def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
+                return json.load(f)
         except Exception:
             return []
     return []
 
-def save_articles(articles):
+def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(articles, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-def upload_to_drive(filename, file_bytes):
+def upload_to_google_drive(filename, pdf_content):
+    """ارسال مستقیم فایل به اکانت گوگل درایو و دریافت لینک دانلود از درایو"""
     try:
-        b64_content = base64.b64encode(file_bytes).decode('utf-8')
         payload = {
             "folderName": "مجلس راهبرد",
             "fileName": filename,
             "mimeType": "application/pdf",
-            "fileContent": b64_content
+            "fileContent": base64.b64encode(pdf_content).decode("utf-8")
         }
-        resp = requests.post(GAS_WEB_APP_URL, json=payload, timeout=90)
-        if resp.status_code == 200:
-            res_data = resp.json()
-            if res_data.get("status") == "success":
-                # لینک دانلود یا نمایش مستقیم از درایو
-                return res_data.get("downloadUrl") or res_data.get("fileUrl")
+        res = requests.post(GAS_WEB_APP_URL, json=payload, timeout=90)
+        if res.status_code == 200:
+            result = res.json()
+            if result.get("status") == "success":
+                # لینک فایل در گوگل درایو
+                return result.get("downloadUrl") or result.get("fileUrl")
     except Exception as e:
-        print(f"Drive upload error: {e}")
+        print(f"Error uploading to Drive: {e}")
     return None
 
-def clean_text(text):
-    return re.sub(r'\s+', ' ', text).strip() if text else ""
-
-def is_title_candidate(text):
-    t = clean_text(text)
-    if len(t) < 15 or re.search(r'^\d+\.\d{4,9}/', t) or re.search(r'^صفحه\s+\d+', t):
-        return False
-    for ign in IGNORE_WORDS:
-        if t.startswith(ign) or ign in t:
-            return False
-    return True
-
-def fetch_actual_pdf(article_page_url):
-    """از داخل صفحه اختصاصی مقاله، لینک واقعی و معتبر PDF را استخراج و دانلود می‌کند"""
-    try:
-        r = requests.get(article_page_url, headers=HEADERS, timeout=30)
-        if r.status_code != 200:
-            return None
-        s = BeautifulSoup(r.text, "html.parser")
-        
-        # گشتن به دنبال دکمه دانلود اصل مقاله
-        pdf_link = None
-        for a in s.find_all("a", href=True):
-            href = a["href"].strip()
-            text = clean_text(a.get_text())
-            if "pdf" in href.lower() or "اصل مقاله" in text or "دانلود" in text:
-                pdf_link = requests.compat.urljoin(article_page_url, href)
-                break
-                
-        if pdf_link:
-            pdf_res = requests.get(pdf_link, headers=HEADERS, timeout=60)
-            if pdf_res.status_code == 200 and len(pdf_res.content) > 5000:
-                return pdf_res.content
-    except Exception as e:
-        print(f"Error fetching actual PDF: {e}")
-    return None
+def clean_title(container, fallback_id):
+    for tag in container.find_all(['h5', 'h4', 'h3', 'strong', 'p', 'a', 'span']):
+        txt = re.sub(r'\s+', ' ', tag.get_text()).strip()
+        if len(txt) > 15 and not any(ign in txt for ign in IGNORE_WORDS) and not re.search(r'^\d+\.\d{4,9}/', txt):
+            return txt
+    return f"مقاله {fallback_id}"
 
 def main():
-    print("در حال دریافت لیست مقالات از سامانه نشریه...")
-    try:
-        res = requests.get(TARGET_URL, headers=HEADERS, timeout=30)
-    except Exception as e:
-        print(f"خطای شبکه: {e}")
-        return
+    print("در حال دریافت اطلاعات از نشریه مجلس...")
+    r = requests.get(TARGET_URL, headers=HEADERS, timeout=30)
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    soup = BeautifulSoup(res.text, "html.parser")
-    saved_articles = load_saved_articles()
+    current_data = load_data()
+    saved_ids = {item["id"] for item in current_data if isinstance(item, dict) and "id" in item}
     
-    # ساخت نگاشت برای بررسی اینکه آیا قبلاً لینک گوگل درایو ثبت شده یا نه
-    saved_dict = {a["id"]: a for a in saved_articles if isinstance(a, dict) and "id" in a}
+    doi_tags = soup.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))
+    new_articles = []
 
-    doi_links = soup.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))
-    updated_articles = []
+    for tag in doi_tags:
+        doi_url = tag["href"].strip()
+        m = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
+        article_id = m.group(0) if m else doi_url
 
-    for doi_tag in doi_links:
-        doi_url = doi_tag["href"].strip()
-        doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
-        article_id = doi_match.group(0) if doi_match else doi_url
-
-        # پیدا کردن عنوان مقاله
-        parent = doi_tag.parent
+        # کانتینر دربرگیرنده مقاله
+        parent = tag.parent
         container = None
         for _ in range(4):
-            if parent and (parent.name in ['li', 'div', 'tr']):
-                if len(parent.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))) == 1:
-                    container = parent
+            if parent and parent.name in ['li', 'div', 'tr']:
+                container = parent
             if parent:
                 parent = parent.parent
         if not container:
-            container = doi_tag.parent
+            container = tag.parent
 
-        title = ""
-        for tag in container.find_all(['h5', 'h4', 'h3', 'strong', 'p', 'a', 'span']):
-            txt = tag.get_text()
-            if is_title_candidate(txt):
-                title = clean_text(txt)
-                break
-        if not title:
-            title = f"مقاله {article_id}"
+        title = clean_title(container, article_id)
 
-        # اگر قبلاً دانلود شده و لینک آن متعلق به drive.google.com است، نیاز به دانلود مجدد نیست
-        existing = saved_dict.get(article_id)
-        if existing and "drive.google.com" in existing.get("pdf_url", ""):
-            updated_articles.append(existing)
-            continue
-
-        print(f"\nدر حال دریافت و آپلود به درایو: {title}")
-        
-        # پیدا کردن لینک صفحه مقاله
-        article_page_url = None
+        # پیدا کردن لینک فایل اصل مقاله
+        pdf_source_url = None
         for a in container.find_all("a", href=True):
             href = a["href"].strip()
-            if "article_" in href or "article.php" in href:
-                article_page_url = requests.compat.urljoin(TARGET_URL, href)
+            if ".pdf" in href.lower() or "download" in href.lower():
+                pdf_source_url = requests.compat.urljoin(TARGET_URL, href)
                 break
-        
-        pdf_bytes = None
-        if article_page_url:
-            pdf_bytes = fetch_actual_pdf(article_page_url)
-        
-        # اگر از صفحه مقاله نشد، از لینک‌های داخل خود کانتینر تلاش کن
-        if not pdf_bytes:
-            for a in container.find_all("a", href=True):
-                href = a["href"].strip()
-                if ".pdf" in href.lower():
-                    full_link = requests.compat.urljoin(TARGET_URL, href)
-                    try:
-                        r = requests.get(full_link, headers=HEADERS, timeout=45)
-                        if r.status_code == 200 and len(r.content) > 5000:
-                            pdf_bytes = r.content
-                            break
-                    except Exception:
-                        pass
 
-        drive_url = ""
-        if pdf_bytes:
-            clean_filename = re.sub(r'[\\/*?:"<>|]', "", title)[:60] + ".pdf"
-            print("ارسال فایل به گوگل درایو...")
-            drive_url = upload_to_drive(clean_filename, pdf_bytes)
-            if drive_url:
-                print(f"فایل با موفقیت ذخیره شد: {drive_url}")
+        drive_link = ""
+        if pdf_source_url:
+            try:
+                print(f"دانلود PDF برای: {title}")
+                resp_pdf = requests.get(pdf_source_url, headers=HEADERS, timeout=45)
+                if resp_pdf.status_code == 200 and len(resp_pdf.content) > 3000:
+                    filename = re.sub(r'[\\/*?:"<>|]', "", title)[:60] + ".pdf"
+                    print("در حال آپلود در گوگل درایو (پوشه مجلس راهبرد)...")
+                    drive_link = upload_to_google_drive(filename, resp_pdf.content)
+            except Exception as e:
+                print(f"خطا در دانلود/آپلود: {e}")
 
-        # اگر درایو با موفقیت انجام شد لینک درایو، در غیر اینصورت صفحه DOI
-        final_pdf_link = drive_url if drive_url else doi_url
+        # دکمه دانلود فقط باید به گوگل درایو برود
+        # اگر هنوز در درایو آپلود نشده، لینک مستقیم DOI قرار می‌گیرد نه فایل خراب نشریه
+        final_download_url = drive_link if drive_link else doi_url
 
-        updated_articles.append({
+        new_articles.append({
             "id": article_id,
             "title": title,
             "doi_url": doi_url,
-            "pdf_url": final_pdf_link
+            "pdf_url": final_download_url
         })
 
-    save_articles(updated_articles)
-    print("\nلیست نهایی به‌روزرسانی شد.")
+    save_data(new_articles)
+    print("به‌روزرسانی با موفقیت انجام شد.")
 
 if __name__ == "__main__":
     main()
