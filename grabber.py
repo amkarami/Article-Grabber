@@ -49,20 +49,15 @@ def main():
 
     soup = BeautifulSoup(res.text, "html.parser")
     saved_articles = load_saved_articles()
-    # ایجاد یک مجموعه از شناسه‌ها برای جلوگیری از دانلود تکراری
     saved_ids = {a.get("id") if isinstance(a, dict) else a for a in saved_articles}
 
-    # پیدا کردن مقالات در صفحه
     article_nodes = soup.find_all("li", class_="margin-bottom-15") or soup.find_all("div", class_="article-item")
-
-    # اگر تگ مشخصی پیدا نشد، همه بلوک‌های لینک‌دار را بررسی کن
     if not article_nodes:
         article_nodes = soup.find_all("div")
 
     new_articles_count = 0
 
     for node in article_nodes:
-        # پیدا کردن لینک DOI
         doi_tag = node.find("a", href=re.compile(r"doi\.org/10\.", re.I))
         if not doi_tag:
             continue
@@ -74,18 +69,25 @@ def main():
         if article_id in saved_ids:
             continue
 
-        # استخراج عنوان فارسی مقاله
-        title = "مقاله نشریه مجلس"
-        title_tag = node.find("h5") or node.find("h4") or node.find("strong")
-        if title_tag:
-            title = title_tag.get_text(strip=True)
-        else:
-            # جستجو در لینک اول
-            first_link = node.find("a")
-            if first_link and first_link.get_text(strip=True):
-                title = first_link.get_text(strip=True)
+        # استخراج دقیق عنوان مقاله (جلوگیری از گرفتن عناوین عمومی مثل مقاله پژوهشی)
+        title = ""
+        # معمولاً عنوان اصلی در تگ‌های لینک‌دار داخل بلوک مقاله یا تگ‌های مشخص قرار دارد
+        links = node.find_all("a")
+        for l in links:
+            txt = l.get_text(strip=True)
+            # اگر متن لینک طولانی‌تر از ۱۵ کاراکتر باشد و لینک DOI یا دانلود نباشد، احتمالاً عنوان اصلی است
+            if len(txt) > 15 and "doi.org" not in l.get("href", "") and ".pdf" not in l.get("href", ""):
+                title = txt
+                break
 
-        # استخراج لینک مستقیم PDF مقاله
+        if not title:
+            title_tag = node.find("h5") or node.find("h4") or node.find("strong")
+            if title_tag:
+                title = title_tag.get_text(strip=True)
+            else:
+                title = "مقاله نشریه مجلس"
+
+        # استخراج لینک مستقیم PDF
         pdf_url = ""
         pdf_tag = node.find("a", href=re.compile(r"\.pdf|/article_\d+_.*\.html|/pdf_", re.I))
         if pdf_tag:
@@ -95,7 +97,6 @@ def main():
 
         print(f"Found new article: {title}")
 
-        # دانلود و ارسال PDF به درایو در صورت وجود
         if pdf_url:
             try:
                 pdf_resp = requests.get(pdf_url, headers=headers, timeout=40)
@@ -106,7 +107,6 @@ def main():
             except Exception as e:
                 print(f"PDF download/upload warning: {e}")
 
-        # ثبت اطلاعات مقاله در لیست
         article_entry = {
             "id": article_id,
             "title": title,
