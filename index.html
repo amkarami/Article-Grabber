@@ -1,296 +1,219 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>پورتال خودکار مقالات نشریه مجلس</title>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <style>
-        :root {
-            --primary: #1e3a8a;
-            --primary-light: #2563eb;
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --text-main: #0f172a;
-            --text-sub: #64748b;
-            --border: #e2e8f0;
-            --success: #16a34a;
-            --success-hover: #15803d;
-        }
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Vazirmatn', sans-serif;
-        }
-        body {
-            background-color: var(--bg);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        header {
-            background: linear-gradient(135deg, #1e3a8a, #0f172a);
-            color: white;
-            padding: 2.5rem 1rem;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        header h1 {
-            font-size: 1.8rem;
-            margin-bottom: 0.5rem;
-            font-weight: 800;
-        }
-        header p {
-            color: #93c5fd;
-            font-size: 0.95rem;
-        }
-        .container {
-            max-width: 950px;
-            margin: -1.5rem auto 2rem;
-            padding: 0 1rem;
-            width: 100%;
-            flex: 1;
-        }
-        .toolbar {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1rem 1.25rem;
-            box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.06);
-            margin-bottom: 1.5rem;
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            border: 1px solid var(--border);
-            flex-wrap: wrap;
-        }
-        .toolbar input {
-            flex: 1;
-            min-width: 220px;
-            border: 1px solid var(--border);
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            outline: none;
-        }
-        .toolbar input:focus {
-            border-color: var(--primary-light);
-        }
-        .badge {
-            background: #eff6ff;
-            color: var(--primary);
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 0.9rem;
-        }
-        .articles-list {
-            display: grid;
-            gap: 1rem;
-        }
-        .article-card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 1.25rem 1.5rem;
-            border: 1px solid var(--border);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1.25rem;
-            flex-wrap: wrap;
-        }
-        .article-info {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.85rem;
-            flex: 1;
-            min-width: 250px;
-        }
-        .article-num {
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
-            color: var(--primary);
-            min-width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: bold;
-            margin-top: 2px;
-        }
-        .article-details {
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-        }
-        .article-title {
-            font-size: 1.05rem;
-            font-weight: 700;
-            line-height: 1.6;
-            color: #1e293b;
-        }
-        .article-doi {
-            font-size: 0.8rem;
-            color: var(--text-sub);
-            direction: ltr;
-            text-align: right;
-            font-family: monospace;
-        }
-        .article-actions {
-            display: flex;
-            gap: 0.6rem;
-            align-items: center;
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 700;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-        .btn-download {
-            background-color: var(--success);
-            color: white;
-        }
-        .btn-download:hover {
-            background-color: var(--success-hover);
-        }
-        .btn-doi {
-            background-color: #f1f5f9;
-            color: var(--text-main);
-            border: 1px solid var(--border);
-        }
-        .btn-doi:hover {
-            background-color: #e2e8f0;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: var(--text-sub);
-            background: white;
-            border-radius: 12px;
-            border: 1px dashed var(--border);
-        }
-        footer {
-            text-align: center;
-            padding: 1.5rem;
-            color: var(--text-sub);
-            font-size: 0.85rem;
-            border-top: 1px solid var(--border);
-            margin-top: auto;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>پورتال مقالات نشریه مجلس</title>
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --secondary: #0d9488;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Tahoma, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      direction: rtl;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+      color: white;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    header h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.8rem;
+    }
+
+    header p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 0.95rem;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .search-box {
+      margin-bottom: 2rem;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 0.9rem 1.2rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 1rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+      outline: none;
+    }
+
+    .search-box input:focus {
+      border-color: #3b82f6;
+    }
+
+    .article-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.4rem;
+      margin-bottom: 1.2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .article-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+    }
+
+    .article-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 0.8rem;
+      line-height: 1.6;
+    }
+
+    .article-id {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 1.2rem;
+      direction: ltr;
+      text-align: right;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      text-decoration: none;
+      padding: 0.6rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .btn-download {
+      background-color: #0d9488;
+      color: white;
+    }
+
+    .btn-download:hover {
+      background-color: #0f766e;
+    }
+
+    .btn-doi {
+      background-color: #e2e8f0;
+      color: #334155;
+    }
+
+    .btn-doi:hover {
+      background-color: #cbd5e1;
+    }
+
+    .loading, .empty {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+  </style>
 </head>
 <body>
 
-    <header>
-        <h1>پورتال خودکار مقالات نشریه مجلس</h1>
-        <p>آرشیو مقالات nashr.majles.ir به همراه دانلود مستقیم و اتصال ابری</p>
-    </header>
+  <header>
+    <h1>پورتال مقالات نشریه مجلس</h1>
+    <p>دسترسی مستقیم به فایل‌های ذخیره‌شده در گوگل درایو و شناسه‌های DOI</p>
+  </header>
 
-    <div class="container">
-        <div class="toolbar">
-            <input type="text" id="searchInput" placeholder="جستجوی عنوان مقاله یا شناسه..." oninput="filterArticles()">
-            <div class="badge" id="statsCount">تعداد مقالات: ۰</div>
-        </div>
-
-        <div id="articlesContainer" class="articles-list">
-            <div class="empty-state">در حال بارگذاری مقالات...</div>
-        </div>
+  <div class="container">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="جستجو در عنوان یا شناسه مقاله...">
     </div>
 
-    <footer>
-        به‌روزرسانی خودکار روزانه با GitHub Actions
-    </footer>
+    <div id="articlesList">
+      <div class="loading">در حال بارگذاری مقالات...</div>
+    </div>
+  </div>
 
-    <script>
-        let allArticles = [];
+  <script>
+    let articles = [];
 
-        async function loadArticles() {
-            try {
-                const response = await fetch('downloaded_articles.json?t=' + new Date().getTime());
-                if (!response.ok) throw new Error('فایل یافت نشد');
-                const data = await response.json();
-                allArticles = Array.isArray(data) ? data : (data.articles || []);
-                renderArticles(allArticles);
-            } catch (err) {
-                console.error(err);
-                document.getElementById('articlesContainer').innerHTML = `
-                    <div class="empty-state">فایلی برای نمایش پیدا نشد.</div>`;
-            }
-        }
+    async function loadArticles() {
+      const container = document.getElementById('articlesList');
+      try {
+        // جلوگیری از کش شدن داده‌های قدیمی
+        const response = await fetch('downloaded_articles.json?t=' + new Date().getTime());
+        if (!response.ok) throw new Error('فایل یافت نشد');
+        articles = await response.json();
+        renderArticles(articles);
+      } catch (err) {
+        container.innerHTML = '<div class="empty">هنوز مقاله‌ای بارگذاری نشده یا فایل داده در دسترس نیست.</div>';
+      }
+    }
 
-        function renderArticles(list) {
-            const container = document.getElementById('articlesContainer');
-            const stats = document.getElementById('statsCount');
-            stats.innerText = `تعداد مقالات: ${list.length}`;
+    function renderArticles(list) {
+      const container = document.getElementById('articlesList');
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div class="empty">هیچ مقاله‌ای یافت نشد.</div>';
+        return;
+      }
 
-            if (!list || list.length === 0) {
-                container.innerHTML = `<div class="empty-state">موردی یافت نشد.</div>`;
-                return;
-            }
+      container.innerHTML = list.map(item => `
+        <div class="article-card">
+          <div class="article-title">${item.title || 'بدون عنوان'}</div>
+          <div class="article-id">${item.id || ''}</div>
+          <div class="actions">
+            <!-- کلید صفحه DOI اصلی مقاله -->
+            <a href="${item.doi_url}" target="_blank" rel="noopener noreferrer" class="btn btn-doi">
+              🌐 صفحه DOI
+            </a>
 
-            container.innerHTML = list.map((item, index) => {
-                let title = "";
-                let doi = "";
-                let downloadUrl = "";
-                let doiUrl = "";
+            <!-- کلید دانلود مستقیم فایل از گوگل درایو -->
+            <a href="${item.pdf_url}" target="_blank" rel="noopener noreferrer" class="btn btn-download">
+              📥 دانلود مستقیم فایل (Drive)
+            </a>
+          </div>
+        </div>
+      `).join('');
+    }
 
-                if (typeof item === 'string') {
-                    // سازگاری با داده‌های ساختار قبلی
-                    doi = item;
-                    title = "مقاله نشریه مجلس (" + item + ")";
-                    doiUrl = item.startsWith('http') ? item : 'https://doi.org/' + item;
-                    downloadUrl = doiUrl;
-                } else {
-                    // ساختار جدید و کامل
-                    title = item.title || "عنوان مقاله یافت نشد";
-                    doi = item.id || "";
-                    doiUrl = item.doi_url || ('https://doi.org/' + item.id);
-                    downloadUrl = item.pdf_url || doiUrl;
-                }
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const val = e.target.value.trim().toLowerCase();
+      const filtered = articles.filter(a => 
+        (a.title && a.title.toLowerCase().includes(val)) ||
+        (a.id && a.id.toLowerCase().includes(val))
+      );
+      renderArticles(filtered);
+    });
 
-                return `
-                    <div class="article-card">
-                        <div class="article-info">
-                            <span class="article-num">${index + 1}</span>
-                            <div class="article-details">
-                                <div class="article-title">${title}</div>
-                                <div class="article-doi">DOI: ${doi}</div>
-                            </div>
-                        </div>
-                        <div class="article-actions">
-                            <a href="${downloadUrl}" target="_blank" download class="btn btn-download">
-                                📥 دانلود مستقیم فایل
-                            </a>
-                            <a href="${doiUrl}" target="_blank" class="btn btn-doi">
-                                🔗 صفحه DOI
-                            </a>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function filterArticles() {
-            const query = document.getElementById('searchInput').value.trim().toLowerCase();
-            const filtered = allArticles.filter(item => {
-                const title = typeof item === 'string' ? item : (item.title + " " + item.id);
-                return title.toLowerCase().includes(query);
-            });
-            renderArticles(filtered);
-        }
-
-        loadArticles();
-    </script>
+    loadArticles();
+  </script>
 </body>
 </html>
