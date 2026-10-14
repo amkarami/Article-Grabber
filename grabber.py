@@ -6,7 +6,6 @@ import requests
 from bs4 import BeautifulSoup
 
 TARGET_URL = "https://nashr.majles.ir/"
-# همان وب‌اپلیکیشن گوگل اپس اسکریپت شما
 GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
 DATA_FILE = "downloaded_articles.json"
 
@@ -14,10 +13,11 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
+# کلماتی که نباید به عنوان تیتر اصلی مقاله انتخاب شوند
 IGNORE_WORDS = [
     "شماره‌های پیشین نشریه", "مقالات آماده انتشار", "شماره جاری",
     "مقاله پژوهشی", "مقاله ترویجی", "مقاله مروری", "مشاهده مقاله",
-    "اصل مقاله", "فایل کلی", "دانلود", "doi"
+    "اصل مقاله", "فایل کلی", "دانلود", "doi", "شناسه دیجیتال"
 ]
 
 def load_data():
@@ -33,8 +33,7 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def upload_to_google_drive(filename, pdf_content):
-    """ارسال مستقیم فایل به اکانت گوگل درایو و دریافت لینک دانلود از درایو"""
+def upload_to_drive(filename, pdf_content):
     try:
         payload = {
             "folderName": "مجلس راهبرد",
@@ -46,36 +45,38 @@ def upload_to_google_drive(filename, pdf_content):
         if res.status_code == 200:
             result = res.json()
             if result.get("status") == "success":
-                # لینک فایل در گوگل درایو
                 return result.get("downloadUrl") or result.get("fileUrl")
     except Exception as e:
-        print(f"Error uploading to Drive: {e}")
+        print(f"Error Drive: {e}")
     return None
 
-def clean_title(container, fallback_id):
-    for tag in container.find_all(['h5', 'h4', 'h3', 'strong', 'p', 'a', 'span']):
-        txt = re.sub(r'\s+', ' ', tag.get_text()).strip()
-        if len(txt) > 15 and not any(ign in txt for ign in IGNORE_WORDS) and not re.search(r'^\d+\.\d{4,9}/', txt):
-            return txt
-    return f"مقاله {fallback_id}"
+def extract_real_title(container, fallback):
+    """استخراج دقیق عنوان واقعی مقاله و فیلتر کردن عناوین بخش و قالب"""
+    for tag in container.find_all(['h5', 'h4', 'h3', 'h2', 'strong', 'a', 'p']):
+        text = re.sub(r'\s+', ' ', tag.get_text()).strip()
+        # رد کردن تیترهای پیش‌فرض و عبارات اضافه
+        if len(text) > 15 and not any(ign in text for ign in IGNORE_WORDS) and not re.search(r'^\d+\.\d{4,9}/', text):
+            return text
+    return fallback
 
 def main():
-    print("در حال دریافت اطلاعات از نشریه مجلس...")
+    print("بررسی مقالات نشریه...")
     r = requests.get(TARGET_URL, headers=HEADERS, timeout=30)
     soup = BeautifulSoup(r.text, "html.parser")
 
     current_data = load_data()
     saved_ids = {item["id"] for item in current_data if isinstance(item, dict) and "id" in item}
-    
+
     doi_tags = soup.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))
-    new_articles = []
+    articles = list(current_data)
+    updated = False
 
     for tag in doi_tags:
         doi_url = tag["href"].strip()
         m = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
         article_id = m.group(0) if m else doi_url
 
-        # کانتینر دربرگیرنده مقاله
+        # پیدا کردن کانتینر دربرگیرنده
         parent = tag.parent
         container = None
         for _ in range(4):
@@ -86,41 +87,45 @@ def main():
         if not container:
             container = tag.parent
 
-        title = clean_title(container, article_id)
+        # اصلاح خط اول: عنوان واقعی مقاله
+        real_title = extract_real_title(container, fallback=f"مقاله {article_id}")
 
-        # پیدا کردن لینک فایل اصل مقاله
-        pdf_source_url = None
+        # اگر قبلاً ذخیره شده، فقط عنوانش را در صورت نیاز اصلاح می‌کنیم
+        existing = next((item for item in articles if item.get("id") == article_id), None)
+        if existing:
+            if existing.get("title") != real_title and not any(ign in real_title for ign in IGNORE_WORDS):
+                existing["title"] = real_title
+                updated = True
+            continue
+
+        # مقاله جدید: دانلود و ارسال به گوگل درایو
+        pdf_url = ""
         for a in container.find_all("a", href=True):
             href = a["href"].strip()
             if ".pdf" in href.lower() or "download" in href.lower():
-                pdf_source_url = requests.compat.urljoin(TARGET_URL, href)
+                pdf_source = requests.compat.urljoin(TARGET_URL, href)
+                try:
+                    res_pdf = requests.get(pdf_source, headers=HEADERS, timeout=45)
+                    if res_pdf.status_code == 200 and len(res_pdf.content) > 3000:
+                        safe_name = re.sub(r'[\\/*?:"<>|]', "", real_title)[:60] + ".pdf"
+                        pdf_url = upload_to_drive(safe_name, res_pdf.content)
+                except Exception:
+                    pass
                 break
 
-        drive_link = ""
-        if pdf_source_url:
-            try:
-                print(f"دانلود PDF برای: {title}")
-                resp_pdf = requests.get(pdf_source_url, headers=HEADERS, timeout=45)
-                if resp_pdf.status_code == 200 and len(resp_pdf.content) > 3000:
-                    filename = re.sub(r'[\\/*?:"<>|]', "", title)[:60] + ".pdf"
-                    print("در حال آپلود در گوگل درایو (پوشه مجلس راهبرد)...")
-                    drive_link = upload_to_google_drive(filename, resp_pdf.content)
-            except Exception as e:
-                print(f"خطا در دانلود/آپلود: {e}")
-
-        # دکمه دانلود فقط باید به گوگل درایو برود
-        # اگر هنوز در درایو آپلود نشده، لینک مستقیم DOI قرار می‌گیرد نه فایل خراب نشریه
-        final_download_url = drive_link if drive_link else doi_url
-
-        new_articles.append({
+        articles.append({
             "id": article_id,
-            "title": title,
+            "title": real_title,
             "doi_url": doi_url,
-            "pdf_url": final_download_url
+            "pdf_url": pdf_url or doi_url
         })
+        updated = True
 
-    save_data(new_articles)
-    print("به‌روزرسانی با موفقیت انجام شد.")
+    if updated:
+        save_data(articles)
+        print("اطلاعات و عناوین با موفقیت اصلاح شدند.")
+    else:
+        print("تغییری لازم نبود.")
 
 if __name__ == "__main__":
     main()
