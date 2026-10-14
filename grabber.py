@@ -9,6 +9,18 @@ TARGET_URL = "https://nashr.majles.ir/"
 GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
 DATA_FILE = "downloaded_articles.json"
 
+# لیست عباراتی که نباید به عنوان نام مقاله انتخاب شوند
+IGNORE_TITLES = [
+    "مقالات آماده انتشار",
+    "مقاله پژوهشی",
+    "مقاله ترویجی",
+    "مقاله مروری",
+    "مشاهده مقاله",
+    "اصل مقاله",
+    "دانلود",
+    "doi"
+]
+
 def load_saved_articles():
     if os.path.exists(DATA_FILE):
         try:
@@ -37,6 +49,15 @@ def upload_to_drive(filename, file_bytes, mime_type="application/pdf"):
     except Exception as e:
         print(f"Drive upload failed: {e}")
         return False
+
+def is_valid_title(text):
+    if not text or len(text.strip()) < 10:
+        return False
+    t_clean = text.strip()
+    for ignore in IGNORE_TITLES:
+        if t_clean == ignore or t_clean.startswith(ignore):
+            return False
+    return True
 
 def main():
     print("Fetching website...")
@@ -69,25 +90,34 @@ def main():
         if article_id in saved_ids:
             continue
 
-        # استخراج دقیق عنوان مقاله (جلوگیری از گرفتن عناوین عمومی مثل مقاله پژوهشی)
+        # استخراج دقیق عنوان مقاله با فیلتر کردن عناوین غیرمرتبط
         title = ""
-        # معمولاً عنوان اصلی در تگ‌های لینک‌دار داخل بلوک مقاله یا تگ‌های مشخص قرار دارد
-        links = node.find_all("a")
-        for l in links:
-            txt = l.get_text(strip=True)
-            # اگر متن لینک طولانی‌تر از ۱۵ کاراکتر باشد و لینک DOI یا دانلود نباشد، احتمالاً عنوان اصلی است
-            if len(txt) > 15 and "doi.org" not in l.get("href", "") and ".pdf" not in l.get("href", ""):
-                title = txt
-                break
+        
+        # ۱. اولویت اول: لینک‌های داخلی که به صفحه خود مقاله اشاره دارند (معمولا شامل /article_)
+        article_link = node.find("a", href=re.compile(r"/article_\d+", re.I))
+        if article_link and is_valid_title(article_link.get_text()):
+            title = article_link.get_text(strip=True)
+
+        # ۲. اولویت دوم: بررسی تگ‌های عنوان
+        if not title:
+            for tag_name in ["h5", "h4", "h3", "strong"]:
+                t_tag = node.find(tag_name)
+                if t_tag and is_valid_title(t_tag.get_text()):
+                    title = t_tag.get_text(strip=True)
+                    break
+
+        # ۳. اولویت سوم: هر لینکی که شرط عنوان واقعی را داشته باشد
+        if not title:
+            for l in node.find_all("a"):
+                txt = l.get_text(strip=True)
+                if is_valid_title(txt) and "doi.org" not in l.get("href", "") and ".pdf" not in l.get("href", ""):
+                    title = txt
+                    break
 
         if not title:
-            title_tag = node.find("h5") or node.find("h4") or node.find("strong")
-            if title_tag:
-                title = title_tag.get_text(strip=True)
-            else:
-                title = "مقاله نشریه مجلس"
+            title = "مقاله نشریه مجلس"
 
-        # استخراج لینک مستقیم PDF
+        # استخراج لینک دانلود مستقیم PDF
         pdf_url = ""
         pdf_tag = node.find("a", href=re.compile(r"\.pdf|/article_\d+_.*\.html|/pdf_", re.I))
         if pdf_tag:
