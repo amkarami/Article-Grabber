@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پورتال مقالات مجلس راهبرد</title>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #3b82f6;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --border: #e2e8f0;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Vazirmatn', sans-serif;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: linear-gradient(135deg, #1e3a8a, #0f172a);
+            color: white;
+            padding: 2.5rem 1rem;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            font-weight: 800;
+        }
+        header p {
+            color: #93c5fd;
+            font-size: 1rem;
+        }
+        .container {
+            max-width: 1000px;
+            margin: -1.5rem auto 2rem;
+            padding: 0 1rem;
+            width: 100%;
+            flex: 1;
+        }
+        .search-box {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            border: 1px solid var(--border);
+        }
+        .search-box input {
+            width: 100%;
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box input:focus {
+            border-color: var(--primary-light);
+        }
+        .stats-badge {
+            background: #eff6ff;
+            color: var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+        .articles-list {
+            display: grid;
+            gap: 1rem;
+        }
+        .article-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .article-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+        }
+        .article-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+        .article-meta {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background-color: var(--primary-light);
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: var(--primary);
+        }
+        .btn-secondary {
+            background-color: #f1f5f9;
+            color: #475569;
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background-color: #e2e8f0;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-sub);
+            background: white;
+            border-radius: 12px;
+            border: 1px dashed var(--border);
+        }
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            color: var(--text-sub);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>پورتال خودکار مقالات نشریه مجلس</h1>
+        <p>آرشیو هوشمند و رصد روزانه مقالات nashr.majles.ir در فضای Google Drive و Cloudflare</p>
+    </header>
+
+    <div class="container">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="جستجو در عناوین مقالات..." oninput="filterArticles()">
+            <div class="stats-badge" id="statsCount">تعداد مقالات: در حال بارگذاری...</div>
+        </div>
+
+        <div id="articlesContainer" class="articles-list">
+            <div class="empty-state">در حال بارگذاری مقالات...</div>
+        </div>
+    </div>
+
+    <footer>
+        قدرت گرفته از GitHub Actions و Cloudflare Pages
+    </footer>
+
+    <script>
+        let allArticles = [];
+
+        async function loadArticles() {
+            try {
+                const response = await fetch('downloaded_articles.json?t=' + new Date().getTime());
+                if (!response.ok) throw new Error('فایل مقالات یافت نشد');
+                const data = await response.json();
+                
+                // در صورتی که ساختار فایل آرایه‌ای از آبجکت‌ها یا رشته‌ها باشد
+                allArticles = Array.isArray(data) ? data : (data.articles || []);
+                renderArticles(allArticles);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('articlesContainer').innerHTML = `
+                    <div class="empty-state">
+                        هنوز فایلی پردازش نشده یا فایل downloaded_articles.json خوانده نشد.
+                    </div>`;
+                document.getElementById('statsCount').innerText = 'تعداد مقالات: ۰';
+            }
+        }
+
+        function renderArticles(list) {
+            const container = document.getElementById('articlesContainer');
+            const stats = document.getElementById('statsCount');
+            stats.innerText = `تعداد مقالات: ${list.length}`;
+
+            if (!list || list.length === 0) {
+                container.innerHTML = `<div class="empty-state">موردی برای نمایش یافت نشد.</div>`;
+                return;
+            }
+
+            container.innerHTML = list.map((item, index) => {
+                const title = typeof item === 'string' ? item : (item.title || `مقاله شماره ${index + 1}`);
+                const url = typeof item === 'object' && item.url ? item.url : '#';
+                const pdf = typeof item === 'object' && item.pdf_url ? item.pdf_url : null;
+
+                return `
+                    <div class="article-card">
+                        <div class="article-title">${title}</div>
+                        <div class="article-meta">
+                            ${url !== '#' ? `<a href="${url}" target="_blank" class="btn btn-secondary">مشاهده در سایت مجلس ↗</a>` : ''}
+                            ${pdf ? `<a href="${pdf}" target="_blank" class="btn btn-primary">دانلود PDF ⬇</a>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterArticles() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const filtered = allArticles.filter(item => {
+                const title = typeof item === 'string' ? item : (item.title || '');
+                return title.toLowerCase().includes(query);
+            });
+            renderArticles(filtered);
+        }
+
+        loadArticles();
+    </script>
+</body>
+</html>
