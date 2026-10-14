@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 TARGET_URL = "https://nashr.majles.ir/"
-GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
+GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzsgIumCWxyAhQ55f5DG61vLZ2UOQlyfr1v8JzGHEmWiHTr4TtQPYsIqnI8lzNdykFR/exec"
 DATA_FILE = "downloaded_articles.json"
 
 IGNORE_WORDS = [
