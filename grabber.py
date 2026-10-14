@@ -4,166 +4,121 @@ import json
 import base64
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 
-BASE_URL = "https://nashr.majles.ir/"
-DB_FILE = "downloaded_articles.json"
+TARGET_URL = "https://nashr.majles.ir/"
+GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
+DATA_FILE = "downloaded_articles.json"
 
-WEB_APP_URL = os.environ.get(
-    "GDRIVE_WEBAPP_URL",
-    "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHWP0WbbsCDWsyVgkMFrNinnSh4S3r31PiRNXGHwjtIM1CK7l/exec"
-)
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"
-}
-
-def upload_to_drive(filename: str, content_bytes: bytes, mime_type: str = "application/octet-stream") -> bool:
-    """ارسال فایل به وب‌اپلیکیشن گوگل‌اسکریپت و ذخیره در پوشه مجلس راهبرد"""
-    try:
-        b64_content = base64.b64encode(content_bytes).decode("utf-8")
-        payload = {
-            "filename": filename,
-            "mimeType": mime_type,
-            "base64": b64_content
-        }
-        res = requests.post(WEB_APP_URL, json=payload, timeout=90, allow_redirects=True)
-        if res.status_code == 200:
-            print(f"✔ فایل با موفقیت در گوگل‌درایو ذخیره شد: {filename}")
-            return True
-        else:
-            print(f"✖ خطا در آپلود {filename} - وضعیت سرور: {res.status_code}")
-            return False
-    except Exception as e:
-        print(f"✖ خطا در ارتباط با گوگل‌درایو: {e}")
-        return False
-
-def load_history():
-    if os.path.exists(DB_FILE):
+def load_saved_articles():
+    if os.path.exists(DATA_FILE):
         try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
         except Exception:
             return []
     return []
 
-def save_history(history):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+def save_articles(articles):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False, indent=2)
 
-def clean_filename(text: str) -> str:
-    cleaned = re.sub(r'[\\/*?:"<>|]', "", text).strip()
-    return re.sub(r'\s+', " ", cleaned)[:100]
+def upload_to_drive(filename, file_bytes, mime_type="application/pdf"):
+    try:
+        b64_content = base64.b64encode(file_bytes).decode('utf-8')
+        payload = {
+            "folderName": "مجلس راهبرد",
+            "fileName": filename,
+            "mimeType": mime_type,
+            "fileContent": b64_content
+        }
+        resp = requests.post(GAS_WEB_APP_URL, json=payload, timeout=60)
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"Drive upload failed: {e}")
+        return False
 
 def main():
-    history = load_history()
-    # اطمینان از وجود فایل تاریخچه در شروع کار تا دستور git add با خطا مواجه نشود
-    save_history(history)
-
-    print("در حال بررسی وب‌سایت نشریه مجلس...")
-
+    print("Fetching website...")
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        res = requests.get(BASE_URL, headers=HEADERS, timeout=30)
-        res.raise_for_status()
-        res.encoding = res.apparent_encoding
+        res = requests.get(TARGET_URL, headers=headers, timeout=30)
     except Exception as e:
-        print(f"خطا در باز کردن وب‌سایت نشریه: {e}")
+        print(f"Error connecting: {e}")
         return
 
     soup = BeautifulSoup(res.text, "html.parser")
+    saved_articles = load_saved_articles()
+    # ایجاد یک مجموعه از شناسه‌ها برای جلوگیری از دانلود تکراری
+    saved_ids = {a.get("id") if isinstance(a, dict) else a for a in saved_articles}
 
-    # پیدا کردن لینک‌های دانلود PDF بر اساس الگوهای آدرس یا متن
-    pdf_links = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
-        text = a.get_text(strip=True)
-        if ".pdf" in href.lower() or "اصل مقاله" in text:
-            if not any(item["href"] == href for item in pdf_links):
-                pdf_links.append(a)
+    # پیدا کردن مقالات در صفحه
+    article_nodes = soup.find_all("li", class_="margin-bottom-15") or soup.find_all("div", class_="article-item")
 
-    if not pdf_links:
-        print("هیچ پیوندی برای دریافت مقالات یافت نشد.")
-        return
+    # اگر تگ مشخصی پیدا نشد، همه بلوک‌های لینک‌دار را بررسی کن
+    if not article_nodes:
+        article_nodes = soup.find_all("div")
 
-    print(f"تعداد {len(pdf_links)} پیوند مقاله پیدا شد.")
     new_articles_count = 0
 
-    for a_pdf in pdf_links:
-        pdf_url = urljoin(BASE_URL, a_pdf["href"])
-
-        # پیدا کردن کانتینر دربرگیرنده این مقاله
-        parent = a_pdf.parent
-        for _ in range(6):
-            if parent and (parent.find(re.compile(r"h[2-6]")) or parent.find("a", href=re.compile(r"10\.\d{4,9}|doi\.org"))):
-                break
-            if parent and parent.parent:
-                parent = parent.parent
-
-        block = parent if parent else soup
-
-        # استخراج عنوان مقاله
-        title_tag = block.find(re.compile(r"h[2-6]"))
-        if not title_tag:
-            title_tag = block.find("a", href=re.compile(r"article_"))
-        title = title_tag.get_text(strip=True) if title_tag else f"مقاله_{clean_filename(os.path.basename(pdf_url))}"
-        clean_title = clean_filename(title)
-
-        # استخراج لینک یا متن DOI
-        doi_link_tag = block.find("a", href=re.compile(r"10\.\d{4,9}|doi\.org"))
-        doi_url = None
-        doi_val = None
-
-        if doi_link_tag:
-            doi_url = doi_link_tag["href"].strip()
-            doi_val = doi_link_tag.get_text(strip=True)
-        else:
-            # جستجو در متن بلاک برای رشته DOI
-            doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", block.get_text())
-            if doi_match:
-                doi_val = doi_match.group(0)
-                doi_url = f"https://doi.org/{doi_val}"
-
-        unique_id = doi_val or pdf_url
-
-        if unique_id in history:
+    for node in article_nodes:
+        # پیدا کردن لینک DOI
+        doi_tag = node.find("a", href=re.compile(r"doi\.org/10\.", re.I))
+        if not doi_tag:
             continue
 
-        print(f"\n================================")
-        print(f"مقاله جدید یافت شد: {clean_title}")
+        doi_url = doi_tag["href"].strip()
+        doi_id = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", doi_url)
+        article_id = doi_id.group(0) if doi_id else doi_url
+
+        if article_id in saved_ids:
+            continue
+
+        # استخراج عنوان فارسی مقاله
+        title = "مقاله نشریه مجلس"
+        title_tag = node.find("h5") or node.find("h4") or node.find("strong")
+        if title_tag:
+            title = title_tag.get_text(strip=True)
+        else:
+            # جستجو در لینک اول
+            first_link = node.find("a")
+            if first_link and first_link.get_text(strip=True):
+                title = first_link.get_text(strip=True)
+
+        # استخراج لینک مستقیم PDF مقاله
+        pdf_url = ""
+        pdf_tag = node.find("a", href=re.compile(r"\.pdf|/article_\d+_.*\.html|/pdf_", re.I))
+        if pdf_tag:
+            pdf_url = pdf_tag["href"].strip()
+            if not pdf_url.startswith("http"):
+                pdf_url = requests.compat.urljoin(TARGET_URL, pdf_url)
+
+        print(f"Found new article: {title}")
+
+        # دانلود و ارسال PDF به درایو در صورت وجود
+        if pdf_url:
+            try:
+                pdf_resp = requests.get(pdf_url, headers=headers, timeout=40)
+                if pdf_resp.status_code == 200:
+                    clean_title = re.sub(r'[\\/*?:"<>|]', "", title)[:60]
+                    safe_filename = f"{clean_title}.pdf"
+                    upload_to_drive(safe_filename, pdf_resp.content, "application/pdf")
+            except Exception as e:
+                print(f"PDF download/upload warning: {e}")
+
+        # ثبت اطلاعات مقاله در لیست
+        article_entry = {
+            "id": article_id,
+            "title": title,
+            "doi_url": doi_url,
+            "pdf_url": pdf_url or doi_url
+        }
+        saved_articles.append(article_entry)
+        saved_ids.add(article_id)
         new_articles_count += 1
 
-        # ۱) دانلود و آپلود اصل فایل PDF
-        try:
-            print("در حال دریافت فایل PDF...")
-            r_pdf = requests.get(pdf_url, headers=HEADERS, timeout=60)
-            if r_pdf.status_code == 200:
-                upload_to_drive(f"{clean_title}.pdf", r_pdf.content, "application/pdf")
-        except Exception as e:
-            print(f"خطا در دریافت PDF: {e}")
-
-        # ۲) کپی محتوای صفحه هایپرلینک DOI
-        if doi_url:
-            try:
-                if doi_url.startswith("10."):
-                    doi_url = "https://doi.org/" + doi_url
-                elif doi_url.startswith("//"):
-                    doi_url = "https:" + doi_url
-
-                print(f"در حال کپی محتوای DOI از: {doi_url}")
-                r_doi = requests.get(doi_url, headers=HEADERS, timeout=40, allow_redirects=True)
-                if r_doi.status_code == 200:
-                    upload_to_drive(f"{clean_title}_DOI.html", r_doi.content, "text/html")
-            except Exception as e:
-                print(f"خطا در کپی DOI: {e}")
-
-        history.append(unique_id)
-
-    save_history(history)
-
-    if new_articles_count > 0:
-        print(f"\nعملیات با موفقیت انجام شد: {new_articles_count} مقاله کپی شد.")
-    else:
-        print("\nتمام مقالات موجود قبلاً دانلود شده بودند.")
+    save_articles(saved_articles)
+    print(f"Finished. {new_articles_count} new articles recorded.")
 
 if __name__ == "__main__":
     main()
