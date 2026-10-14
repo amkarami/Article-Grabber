@@ -10,17 +10,9 @@ GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0EDuufk9TvKcFRDvpHW
 DATA_FILE = "downloaded_articles.json"
 
 IGNORE_WORDS = [
-    "شماره‌های پیشین نشریه",
-    "مقالات آماده انتشار",
-    "شماره جاری",
-    "مقاله پژوهشی",
-    "مقاله ترویجی",
-    "مقاله مروری",
-    "مشاهده مقاله",
-    "اصل مقاله",
-    "فایل کلی",
-    "دانلود",
-    "doi"
+    "شماره‌های پیشین نشریه", "مقالات آماده انتشار", "شماره جاری",
+    "مقاله پژوهشی", "مقاله ترویجی", "مقاله مروری", "مشاهده مقاله",
+    "اصل مقاله", "فایل کلی", "دانلود", "doi"
 ]
 
 def load_saved_articles():
@@ -46,71 +38,35 @@ def upload_to_drive(filename, file_bytes, mime_type="application/pdf"):
             "mimeType": mime_type,
             "fileContent": b64_content
         }
-        resp = requests.post(GAS_WEB_APP_URL, json=payload, timeout=60)
-        return resp.status_code == 200
+        resp = requests.post(GAS_WEB_APP_URL, json=payload, timeout=90)
+        if resp.status_code == 200:
+            res_data = resp.json()
+            if res_data.get("status") == "success":
+                # لینک مشاهده یا دانلود از گوگل درایو
+                return res_data.get("downloadUrl") or res_data.get("fileUrl")
     except Exception as e:
-        print(f"Drive upload failed: {e}")
-        return False
+        print(f"Drive upload error: {e}")
+    return None
 
 def clean_text(text):
-    if not text:
-        return ""
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'\s+', ' ', text).strip() if text else ""
 
 def is_title_candidate(text):
     t = clean_text(text)
-    if len(t) < 15:
-        return False
-    if re.search(r'^\d+\.\d{4,9}/', t):
-        return False
-    if re.search(r'^صفحه\s+\d+', t):
+    if len(t) < 15 or re.search(r'^\d+\.\d{4,9}/', t) or re.search(r'^صفحه\s+\d+', t):
         return False
     for ign in IGNORE_WORDS:
         if t.startswith(ign) or ign in t:
             return False
     return True
 
-def get_real_pdf_and_details(container, doi_url):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    article_page_url = ""
-    
-    # پیدا کردن لینک صفحه اختصاصی مقاله
-    for a in container.find_all("a", href=re.compile(r"/article_\d+", re.I)):
-        href = a["href"]
-        if not href.startswith("http"):
-            href = requests.compat.urljoin(TARGET_URL, href)
-        if ".pdf" not in href.lower():
-            article_page_url = href
-            break
-
-    pdf_url = ""
-    if article_page_url:
-        try:
-            res = requests.get(article_page_url, headers=headers, timeout=20)
-            if res.status_code == 200:
-                soup_art = BeautifulSoup(res.text, "html.parser")
-                # جستجوی لینک اصلی PDF در صفحه مقاله
-                pdf_tag = soup_art.find("a", href=re.compile(r"\.pdf", re.I))
-                if pdf_tag:
-                    pdf_url = pdf_tag["href"].strip()
-                    if not pdf_url.startswith("http"):
-                        pdf_url = requests.compat.urljoin(TARGET_URL, pdf_url)
-        except Exception as e:
-            print(f"Error fetching article page: {e}")
-
-    # اگر پیدا نشد، از لینک DOI یا پیش‌فرض استفاده کن
-    if not pdf_url:
-        pdf_url = doi_url
-
-    return pdf_url
-
 def main():
-    print("Fetching website...")
+    print("در حال دریافت صفحه اصلی نشریه...")
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         res = requests.get(TARGET_URL, headers=headers, timeout=30)
     except Exception as e:
-        print(f"Error connecting: {e}")
+        print(f"خطا در اتصال به سایت: {e}")
         return
 
     soup = BeautifulSoup(res.text, "html.parser")
@@ -118,7 +74,7 @@ def main():
     saved_ids = {a.get("id") if isinstance(a, dict) else a for a in saved_articles}
 
     doi_links = soup.find_all("a", href=re.compile(r"doi\.org/10\.", re.I))
-    new_articles_count = 0
+    new_count = 0
 
     for doi_tag in doi_links:
         doi_url = doi_tag["href"].strip()
@@ -140,6 +96,7 @@ def main():
         if not container:
             container = doi_tag.parent
 
+        # یافتن عنوان مقاله
         title = ""
         for tag in container.find_all(['h5', 'h4', 'h3', 'strong', 'p', 'a', 'span']):
             txt = tag.get_text()
@@ -148,42 +105,54 @@ def main():
                 break
 
         if not title:
-            all_strings = [clean_text(s) for s in container.stripped_strings]
-            for s in all_strings:
+            for s in [clean_text(st) for st in container.stripped_strings]:
                 if is_title_candidate(s):
                     title = s
                     break
 
         if not title:
-            title = "مقاله نشریه مجلس"
+            title = f"مقاله {article_id}"
 
-        # استخراج لینک واقعی و صحیح PDF از صفحه مقاله
-        pdf_url = get_real_pdf_and_details(container, doi_url)
+        print(f"\nدر حال پردازش: {title}")
 
-        print(f"Extracted: {title} | PDF: {pdf_url}")
+        # پیدا کردن لینک دانلود فایل PDF از داخل صفحه
+        pdf_download_link = ""
+        for a in container.find_all("a", href=True):
+            href = a["href"].strip()
+            if ".pdf" in href.lower() or "download" in href.lower():
+                if not href.startswith("http"):
+                    href = requests.compat.urljoin(TARGET_URL, href)
+                pdf_download_link = href
+                break
 
-        if pdf_url and ".pdf" in pdf_url:
+        drive_file_url = ""
+        if pdf_download_link:
             try:
-                pdf_resp = requests.get(pdf_url, headers=headers, timeout=40)
-                if pdf_resp.status_code == 200:
-                    clean_title_file = re.sub(r'[\\/*?:"<>|]', "", title)[:60]
-                    safe_filename = f"{clean_title_file}.pdf"
-                    upload_to_drive(safe_filename, pdf_resp.content, "application/pdf")
-            except Exception as e:
-                print(f"PDF download/upload warning: {e}")
+                print(f"دانلود فایل PDF از: {pdf_download_link}")
+                pdf_file_res = requests.get(pdf_download_link, headers=headers, timeout=45)
+                if pdf_file_res.status_code == 200 and len(pdf_file_res.content) > 5000:
+                    clean_filename = re.sub(r'[\\/*?:"<>|]', "", title)[:60] + ".pdf"
+                    print("در حال انتقال فایل به گوگل درایو...")
+                    drive_file_url = upload_to_drive(clean_filename, pdf_file_res.content)
+                    if drive_file_url:
+                        print(f"فایل با موفقیت در درایو قرار گرفت: {drive_file_url}")
+            except Exception as ex:
+                print(f"خطا در دانلود یا آپلود درایو: {ex}")
 
-        article_entry = {
+        # اگر به درایو آپلود نشد، لینک خود مقاله یا DOI را قرار می‌دهیم
+        final_pdf_url = drive_file_url if drive_file_url else doi_url
+
+        saved_articles.append({
             "id": article_id,
             "title": title,
             "doi_url": doi_url,
-            "pdf_url": pdf_url
-        }
-        saved_articles.append(article_entry)
+            "pdf_url": final_pdf_url
+        })
         saved_ids.add(article_id)
-        new_articles_count += 1
+        new_count += 1
 
     save_articles(saved_articles)
-    print(f"Finished. {new_articles_count} new articles recorded.")
+    print(f"\nعملیات به پایان رسید. {new_count} مقاله به گوگل درایو و دیتابیس اضافه شدند.")
 
 if __name__ == "__main__":
     main()
